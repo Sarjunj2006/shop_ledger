@@ -24,6 +24,20 @@ of a stack of handwritten pages.
 The app keeps running as long as the terminal/server is running. To keep it running permanently on
 a shop computer, look into a process manager like `pm2` (`npm install -g pm2` then `pm2 start server.js`).
 
+## Staff login (PINs)
+Every staff member logs in with their **name + a 4-digit PIN** before they can log any service —
+no more picking a name from an open dropdown. The owner sets each PIN from **Staff & Services**
+(each staff row has a "Change PIN" button), and can hand it out to that person however they like
+(write it down, tell them, etc).
+
+The default seed data ships with three staff members and starter PINs (`1111`, `2222`, `3333`) —
+change these before real use, the same way you'd change the default owner password.
+
+A staff member's login lasts for that browser tab's session. If two people share one till device
+during a shift, whoever's turn it is logs in, logs their service, then clicks **Log out** so the
+next person logs in as themselves — this is what makes "who did the work" reliable instead of
+relying on people remembering to pick the right name from a list.
+
 ## Owner access
 Only the **New Entry** tab is visible to staff. **Today's Book**, **Reports**, and **Staff &
 Services** are locked — clicking "Owner Login" (top right) prompts for a password, and only
@@ -34,14 +48,68 @@ password with an environment variable when starting the server:
 
 ```bash
 # Windows PowerShell
-$env:OWNER_PASSWORD="owner123"; npm start
+$env:OWNER_PASSWORD="your-real-password"; npm start
 
 # macOS/Linux
-OWNER_PASSWORD="owner123" npm start
+OWNER_PASSWORD="your-real-password" npm start
 ```
 
 Owner access lasts for that browser tab's session (closing the browser or clicking "Log out of
 owner view" clears it); each device/browser needs to log in separately.
+
+## Deploying to Render
+
+### 1. Push the code to GitHub
+Render deploys from a Git repo, so this project needs to be in one.
+```bash
+cd shop-ledger
+git init
+git add .
+git commit -m "Shop Ledger"
+```
+Create a new empty repo on GitHub, then:
+```bash
+git remote add origin https://github.com/<your-username>/shop-ledger.git
+git branch -M main
+git push -u origin main
+```
+
+### 2. Create the Web Service on Render
+1. Go to [render.com](https://render.com) → **New +** → **Web Service**.
+2. Connect your GitHub account and pick the `shop-ledger` repo.
+3. Fill in:
+   - **Environment**: `Node`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+4. Under **Environment Variables**, add:
+   - `OWNER_PASSWORD` → your real owner password (don't leave it as `owner123`)
+5. Click **Create Web Service**. Render gives you a live URL like `https://shop-ledger.onrender.com`
+   in a couple of minutes.
+
+### 3. Make the data persist (important)
+Without this step, Render wipes the app's local files on every restart/redeploy, so your logged
+entries, staff, and services would disappear. To fix it:
+
+1. On your service in Render, go to **Disks** → **Add Disk**.
+   - Name: `shop-data`
+   - Mount Path: `/var/data`
+   - Size: 1 GB is plenty.
+   - Note: persistent disks require a **paid instance type** (Starter or above) — the free tier
+     does not support them.
+2. Add another environment variable: `DB_PATH` → `/var/data/db.json`
+3. Redeploy. The server will automatically create `db.json` with the default staff/services the
+   first time it starts, and from then on all data is saved to the disk and survives restarts.
+
+If you're just testing and don't mind the data resetting occasionally, you can skip the disk —
+the app will still run fine on Render's free tier, it'll just lose entries whenever the service
+restarts or redeploys.
+
+### 4. Using it day to day
+Once deployed, share the Render URL with your staff (bookmark it on the shop tablet/phone) and
+use `https://your-app.onrender.com` yourself for the owner view. The free tier "spins down" after
+15 minutes of no traffic and takes ~30-50 seconds to wake back up on the next visit — worth
+knowing so it doesn't feel broken the first time someone opens it in the morning. A paid instance
+stays always-on.
 
 ## How staff use it
 - **New Entry** tab: pick your name, pick the service (price fills in automatically, but you can

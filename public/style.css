@@ -93,15 +93,19 @@ body {
 }
 
 /* ---------- owner access ---------- */
-.tab.owner-only { display: none; }
-body.owner-mode .tab.owner-only { display: inline-block; }
-body.owner-mode .tab.staff-only { display: none; }
+.owner-only { display: none; }
+body.owner-mode .owner-only { display: inline-block; }
+body.owner-mode .staff-only { display: none; }
 
 .owner-controls {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.session-badge {
+  font-size: 12.5px;
+  color: #b9c6ba;
 }
 .owner-btn {
   background: none;
@@ -124,6 +128,68 @@ body:not(.owner-mode) #owner-logout-btn { display: none; }
   border-bottom: 1px solid #33473a;
 }
 .tabs-row .tabs { border-bottom: none; }
+
+/* ---------- login gate ---------- */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cover);
+  background-image: radial-gradient(circle at 20% -10%, #24382b 0%, transparent 45%);
+  padding: 20px;
+}
+.login-screen[hidden] { display: none; }
+.login-card {
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 36px 32px 30px;
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+}
+.login-card .brand-mark {
+  display: block;
+  font-size: 36px;
+  color: var(--brass);
+  transform: rotate(-8deg);
+  margin-bottom: 6px;
+}
+.login-card h1 {
+  font-family: "Fraunces", serif;
+  font-size: 24px;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.login-card .tagline {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  margin: 0 0 22px;
+}
+.login-card select,
+.login-card input {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 15px;
+  border: 1px solid var(--paper-line);
+  background: #fffdf8;
+  border-radius: 3px;
+  margin-bottom: 12px;
+  text-align: left;
+}
+.login-card #login-pin {
+  text-align: center;
+  letter-spacing: 6px;
+  font-family: "IBM Plex Mono", monospace;
+}
+.login-divider {
+  color: #a89a7c;
+  font-size: 12px;
+  margin: 18px 0 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
 
 .modal-overlay {
   position: fixed;
