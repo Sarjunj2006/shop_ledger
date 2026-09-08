@@ -1,0 +1,100 @@
+{
+  "staff": [
+    {
+      "id": "s1",
+      "name": "Ravi",
+      "active": true
+    },
+    {
+      "id": "s2",
+      "name": "Kumar",
+      "active": true
+    },
+    {
+      "id": "s3",
+      "name": "Priya",
+      "active": true
+    },
+    {
+      "id": "s_cb40f5f7",
+      "name": "Sarjun",
+      "active": true
+    }
+  ],
+  "services": [
+    {
+      "id": "sv1",
+      "name": "Haircut",
+      "price": 150
+    },
+    {
+      "id": "sv2",
+      "name": "Beard Trim",
+      "price": 80
+    },
+    {
+      "id": "sv3",
+      "name": "Hair Colour",
+      "price": 400
+    },
+    {
+      "id": "sv4",
+      "name": "Facial",
+      "price": 350
+    },
+    {
+      "id": "sv5",
+      "name": "Head Massage",
+      "price": 120
+    },
+    {
+      "id": "sv_d37cfaa0",
+      "name": "Face massage",
+      "price": 250
+    }
+  ],
+  "entries": [
+    {
+      "id": "e_113f085c",
+      "staffId": "s2",
+      "staffName": "Kumar",
+      "serviceId": "sv5",
+      "serviceName": "Head Massage",
+      "price": 118,
+      "paymentMethod": "cash",
+      "customerName": "sarjun",
+      "note": "no",
+      "date": "2026-09-08",
+      "time": "21:13",
+      "createdAt": "2026-09-08T15:43:03.205Z"
+    },
+    {
+      "id": "e_3ccc208f",
+      "staffId": "s1",
+      "staffName": "Ravi",
+      "serviceId": "sv1",
+      "serviceName": "Haircut",
+      "price": 150,
+      "paymentMethod": "cash",
+      "customerName": "",
+      "note": "",
+      "date": "2026-09-08",
+      "time": "21:28",
+      "createdAt": "2026-09-08T15:58:27.661Z"
+    },
+    {
+      "id": "e_070b099a",
+      "staffId": "s1",
+      "staffName": "Ravi",
+      "serviceId": "sv_d37cfaa0",
+      "serviceName": "Face massage",
+      "price": 250,
+      "paymentMethod": "other",
+      "customerName": "",
+      "note": "",
+      "date": "2026-09-08",
+      "time": "21:37",
+      "createdAt": "2026-09-08T16:07:28.508Z"
+    }
+  ]
+}

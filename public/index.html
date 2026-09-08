@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shop Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="till-frame">
+    <header class="till-header">
+      <div class="brand">
+        <span class="brand-mark">✂</span>
+        <div>
+          <h1>Shop Ledger</h1>
+          <p class="brand-sub">Today's register, kept straight.</p>
+        </div>
+      </div>
+      <div class="tabs-row">
+        <nav class="tabs" id="tabs">
+          <button data-tab="entry" class="tab active staff-only">New Entry</button>
+          <button data-tab="today" class="tab owner-only">Today's Book</button>
+          <button data-tab="reports" class="tab owner-only">Reports</button>
+          <button data-tab="manage" class="tab owner-only">Staff & Services</button>
+        </nav>
+        <div class="owner-controls">
+          <button id="owner-login-btn" class="owner-btn">Owner Login</button>
+          <button id="owner-logout-btn" class="owner-btn">Log out of owner view</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="modal-overlay" id="owner-modal" hidden>
+      <form class="modal-card" id="owner-login-form">
+        <h3>Owner access</h3>
+        <p>Enter the owner password to see reports, today's book, and staff/service settings.</p>
+        <p class="modal-error" id="owner-login-error"></p>
+        <input type="password" id="owner-password" placeholder="Password" autocomplete="current-password" />
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="owner-cancel-btn">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0">Unlock</button>
+        </div>
+      </form>
+    </div>
+
+    <main>
+      <!-- NEW ENTRY -->
+      <section id="panel-entry" class="panel active">
+        <form id="entry-form" class="ledger-form">
+          <div class="field">
+            <label>Who did the work</label>
+            <select id="f-staff" required></select>
+          </div>
+          <div class="field">
+            <label>Service done</label>
+            <select id="f-service" required></select>
+          </div>
+          <div class="field">
+            <label>Amount charged (₹)</label>
+            <input id="f-price" type="number" min="0" step="1" required />
+          </div>
+          <div class="field">
+            <label>Paid by</label>
+            <div class="pill-group" id="f-payment">
+              <button type="button" class="pill active" data-value="cash">Cash</button>
+              <button type="button" class="pill" data-value="card">Card</button>
+              <button type="button" class="pill" data-value="upi">UPI</button>
+              <button type="button" class="pill" data-value="other">Other</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Customer name <span class="optional">(optional)</span></label>
+            <input id="f-customer" type="text" placeholder="Walk-in" />
+          </div>
+          <div class="field">
+            <label>Note <span class="optional">(optional)</span></label>
+            <input id="f-note" type="text" placeholder="e.g. discount given, regular customer..." />
+          </div>
+          <button type="submit" class="btn-primary">Log this service</button>
+          <p id="entry-status" class="status-msg" aria-live="polite"></p>
+        </form>
+
+        <div class="ticker" id="recent-ticker">
+          <h2>Just logged</h2>
+          <ul id="recent-list" class="recent-list"></ul>
+        </div>
+      </section>
+
+      <!-- TODAY'S BOOK -->
+      <section id="panel-today" class="panel">
+        <div class="panel-head">
+          <h2>Today's Book</h2>
+          <div class="totals-strip" id="today-totals"></div>
+        </div>
+        <div class="table-wrap">
+          <table id="today-table">
+            <thead>
+              <tr>
+                <th>Time</th><th>Staff</th><th>Service</th><th>Customer</th><th>Paid via</th><th>Amount</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="empty-msg" id="today-empty" hidden>Nothing logged yet today. First entry of the day goes here.</p>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="panel-reports" class="panel">
+        <div class="panel-head">
+          <h2>Reports</h2>
+          <div class="range-controls">
+            <label>From <input type="date" id="r-from" /></label>
+            <label>To <input type="date" id="r-to" /></label>
+            <button id="r-apply" class="btn-secondary">Apply</button>
+            <button id="r-export" class="btn-secondary">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="report-grid">
+          <div class="report-card highlight">
+            <span class="report-label">Total collected</span>
+            <span class="report-value" id="rep-total">₹0</span>
+            <span class="report-sub" id="rep-count">0 services</span>
+          </div>
+          <div class="report-card">
+            <span class="report-label">By staff</span>
+            <ul id="rep-staff" class="report-list"></ul>
+          </div>
+          <div class="report-card">
+            <span class="report-label">By payment method</span>
+            <ul id="rep-payment" class="report-list"></ul>
+          </div>
+          <div class="report-card">
+            <span class="report-label">By service</span>
+            <ul id="rep-service" class="report-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- MANAGE -->
+      <section id="panel-manage" class="panel">
+        <div class="manage-grid">
+          <div class="manage-block">
+            <h2>Staff</h2>
+            <form id="staff-form" class="inline-form">
+              <input id="staff-name" type="text" placeholder="Add staff name" required />
+              <button type="submit" class="btn-secondary">Add</button>
+            </form>
+            <ul id="staff-list" class="manage-list"></ul>
+          </div>
+          <div class="manage-block">
+            <h2>Services & Prices</h2>
+            <form id="service-form" class="inline-form">
+              <input id="service-name" type="text" placeholder="Service name" required />
+              <input id="service-price" type="number" min="0" step="1" placeholder="₹ Price" required style="max-width:110px" />
+              <button type="submit" class="btn-secondary">Add</button>
+            </form>
+            <ul id="service-list" class="manage-list"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
