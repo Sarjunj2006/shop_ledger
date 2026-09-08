@@ -240,6 +240,7 @@ body:not(.owner-mode) #owner-logout-btn { display: none; }
   text-decoration: underline;
 }
 .link-btn:hover { color: var(--rust); }
+.link-btn[hidden] { display: none; }
 
 /* ---------- panels ---------- */
 .panel { display: none; }
