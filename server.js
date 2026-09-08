@@ -92,11 +92,17 @@ if (process.env.SMTP_HOST) {
     secure: Number(process.env.SMTP_PORT) === 465,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   });
+  console.log(`[Shop Ledger] SMTP configured: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587}, user=${process.env.SMTP_USER || "(none)"}`);
+} else {
+  console.log("[Shop Ledger] SMTP not configured (SMTP_HOST is not set) — reset codes will only appear in these logs, not by email.");
 }
 async function sendResetCodeEmail(to, code, label) {
   // Always log server-side too — useful during setup, and as a fallback if SMTP isn't configured yet.
   console.log(`[Shop Ledger] ${label} password reset code for ${to}: ${code} (valid 15 minutes)`);
-  if (!mailer) return false;
+  if (!mailer) {
+    console.log("[Shop Ledger] SMTP not configured (no SMTP_HOST set) — email was NOT sent, code above is log-only.");
+    return false;
+  }
   try {
     await mailer.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
@@ -104,6 +110,7 @@ async function sendResetCodeEmail(to, code, label) {
       subject: `Shop Ledger — ${label} password reset code`,
       text: `Your ${label.toLowerCase()} password reset code is: ${code}\n\nThis code expires in 15 minutes. If you didn't request this, you can ignore this email.`,
     });
+    console.log(`[Shop Ledger] Reset email sent successfully to ${to}.`);
     return true;
   } catch (err) {
     console.error("[Shop Ledger] Failed to send reset email:", err.message);
