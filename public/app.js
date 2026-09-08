@@ -68,6 +68,7 @@ function openAccessModal(mode) {
     : "Enter the staff password to log services.";
   document.getElementById("access-login-error").textContent = "";
   document.getElementById("access-password").value = "";
+  document.getElementById("forgot-password-link").hidden = isOwnerMode;
   showModalStep("access-login-form");
   accessModal.hidden = false;
   document.getElementById("access-password").focus();
@@ -137,9 +138,8 @@ document.getElementById("forgot-email-form").addEventListener("submit", async (e
   errEl.textContent = "";
   successEl.textContent = "";
   const email = document.getElementById("forgot-email").value;
-  const endpoint = accessModalMode === "owner" ? "/owner/forgot-password" : "/staff-access/forgot-password";
   try {
-    const res = await fetch(API + endpoint, {
+    const res = await fetch(API + "/staff-access/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -162,9 +162,8 @@ document.getElementById("reset-password-form").addEventListener("submit", async 
   errEl.textContent = "";
   const code = document.getElementById("reset-code").value;
   const newPassword = document.getElementById("reset-new-password").value;
-  const endpoint = accessModalMode === "owner" ? "/owner/reset-password" : "/staff-access/reset-password";
   try {
-    const res = await fetch(API + endpoint, {
+    const res = await fetch(API + "/staff-access/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, newPassword }),

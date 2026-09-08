@@ -204,35 +204,10 @@ function requireOwner(req, res, next) {
   next();
 }
 
-app.post("/api/owner/forgot-password", async (req, res) => {
-  const { email } = req.body;
-  const db = readDB();
-  const registered = db.settings.ownerEmail;
-  if (!registered) {
-    return res.status(400).json({ error: "No recovery email is set up yet. Set one from Staff & Services while logged in as owner." });
-  }
-  // Respond the same way whether or not it matches, so this can't be used to probe for the registered address.
-  if (email && email.trim().toLowerCase() === registered.toLowerCase()) {
-    const code = makeResetCode("owner");
-    await sendResetCodeEmail(registered, code, "Owner");
-  }
-  res.json({ message: "If that email is on file, a reset code has been sent." });
-});
-
-app.post("/api/owner/reset-password", (req, res) => {
-  const { code, newPassword } = req.body;
-  if (!newPassword || newPassword.length < 4) {
-    return res.status(400).json({ error: "New password must be at least 4 characters." });
-  }
-  if (!consumeResetCode(code, "owner")) {
-    return res.status(400).json({ error: "That code is invalid or has expired." });
-  }
-  const db = readDB();
-  db.settings.ownerPasswordHash = hashPassword(newPassword);
-  writeDB(db);
-  ownerTokens.clear(); // force re-login everywhere after a password change
-  res.json({ message: "Owner password updated." });
-});
+// Note: the owner password has no email-based recovery by design — only the shared staff
+// password does (see /api/staff-access/forgot-password below). If the owner password is lost,
+// it can only be reset by changing OWNER_PASSWORD and clearing db.json's settings.ownerPasswordHash,
+// or by deleting the data file so it reseeds (which also resets everything else).
 
 // ---------- staff access (one shared password for the whole team) ----------
 const staffTokens = new Set();
