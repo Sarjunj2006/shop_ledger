@@ -458,6 +458,9 @@ async function loadSettings() {
   document.getElementById("settings-email").value = settings.ownerEmail || "";
 }
 
+// ---------- manual refresh ----------
+document.getElementById("today-refresh-btn").addEventListener("click", loadToday);
+
 // ---------- init ----------
 loadFormOptions();
 setOwnerMode(isOwner());
