@@ -67,11 +67,17 @@ function openAccessModal(mode) {
     : "Enter the staff password to log services.";
   document.getElementById("access-login-error").textContent = "";
   document.getElementById("access-password").value = "";
+  showModalStep("access-login-form");
   accessModal.hidden = false;
   document.getElementById("access-password").focus();
 }
 function closeAccessModal() {
   accessModal.hidden = true;
+}
+function showModalStep(formId) {
+  ["access-login-form", "forgot-email-form", "reset-password-form"].forEach((id) => {
+    document.getElementById(id).hidden = id !== formId;
+  });
 }
 
 document.getElementById("staff-login-open").addEventListener("click", () => openAccessModal("staff"));
@@ -107,6 +113,66 @@ document.getElementById("access-login-form").addEventListener("submit", async (e
       showApp();
       switchToTab("entry");
     }
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+});
+
+// ---------- forgot password (email a code, then reset) ----------
+document.getElementById("forgot-password-link").addEventListener("click", () => {
+  document.getElementById("forgot-email-error").textContent = "";
+  document.getElementById("forgot-email-success").textContent = "";
+  document.getElementById("forgot-email").value = "";
+  showModalStep("forgot-email-form");
+  document.getElementById("forgot-email").focus();
+});
+document.getElementById("forgot-back-btn").addEventListener("click", () => showModalStep("access-login-form"));
+document.getElementById("reset-back-btn").addEventListener("click", () => showModalStep("access-login-form"));
+
+document.getElementById("forgot-email-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("forgot-email-error");
+  const successEl = document.getElementById("forgot-email-success");
+  errEl.textContent = "";
+  successEl.textContent = "";
+  const email = document.getElementById("forgot-email").value;
+  const endpoint = accessModalMode === "owner" ? "/owner/forgot-password" : "/staff-access/forgot-password";
+  try {
+    const res = await fetch(API + endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Something went wrong.");
+    successEl.textContent = body.message;
+    document.getElementById("reset-password-error").textContent = "";
+    document.getElementById("reset-code").value = "";
+    document.getElementById("reset-new-password").value = "";
+    setTimeout(() => showModalStep("reset-password-form"), 700);
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+});
+
+document.getElementById("reset-password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("reset-password-error");
+  errEl.textContent = "";
+  const code = document.getElementById("reset-code").value;
+  const newPassword = document.getElementById("reset-new-password").value;
+  const endpoint = accessModalMode === "owner" ? "/owner/reset-password" : "/staff-access/reset-password";
+  try {
+    const res = await fetch(API + endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, newPassword }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Something went wrong.");
+    // Password changed — send them back to the normal login step to sign in with it.
+    showModalStep("access-login-form");
+    document.getElementById("access-login-error").textContent = "Password updated — log in with your new password.";
   } catch (err) {
     errEl.textContent = err.message;
   }
@@ -322,7 +388,22 @@ async function exportCSV() {
   a.click();
 }
 
-// ---------- manage staff & services ----------
+// ---------- manage staff & services & recovery email ----------
+document.getElementById("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("settings-error");
+  const successEl = document.getElementById("settings-success");
+  errEl.textContent = "";
+  successEl.textContent = "";
+  const input = document.getElementById("settings-email");
+  try {
+    await api("/settings", { method: "PATCH", body: JSON.stringify({ ownerEmail: input.value }) });
+    successEl.textContent = "Saved.";
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+});
+
 document.getElementById("staff-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("staff-name");
@@ -347,7 +428,9 @@ document.getElementById("service-form").addEventListener("submit", async (e) => 
 });
 
 async function loadManage() {
-  const [staff, services] = await Promise.all([api("/staff"), api("/services")]);
+  const [staff, services, settings] = await Promise.all([api("/staff"), api("/services"), api("/settings")]);
+  document.getElementById("settings-email").value = settings.ownerEmail || "";
+
   const staffList = document.getElementById("staff-list");
   staffList.innerHTML = staff
     .map((s) => `<li>${s.name}<button data-id="${s.id}" data-type="staff">Remove</button></li>`)

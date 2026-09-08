@@ -21,16 +21,46 @@
   </div>
 
   <div class="modal-overlay" id="access-modal" hidden>
-    <form class="modal-card" id="access-login-form">
-      <h3 id="access-modal-title">Login</h3>
-      <p id="access-modal-desc"></p>
-      <p class="modal-error" id="access-login-error"></p>
-      <input type="password" id="access-password" placeholder="Password" autocomplete="current-password" />
-      <div class="modal-actions">
-        <button type="button" class="btn-secondary" id="access-cancel-btn">Cancel</button>
-        <button type="submit" class="btn-primary" style="margin-top:0">Unlock</button>
-      </div>
-    </form>
+    <div class="modal-card">
+      <!-- Step 1: password login -->
+      <form id="access-login-form">
+        <h3 id="access-modal-title">Login</h3>
+        <p id="access-modal-desc"></p>
+        <p class="modal-error" id="access-login-error"></p>
+        <input type="password" id="access-password" placeholder="Password" autocomplete="current-password" />
+        <button type="button" id="forgot-password-link" class="link-btn">Forgot password?</button>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="access-cancel-btn">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0">Unlock</button>
+        </div>
+      </form>
+
+      <!-- Step 2: request a reset code by email -->
+      <form id="forgot-email-form" hidden>
+        <h3>Reset password</h3>
+        <p>Enter the recovery email on file. If it matches, we'll send a 6-digit code to it.</p>
+        <p class="modal-error" id="forgot-email-error"></p>
+        <p class="modal-success" id="forgot-email-success"></p>
+        <input type="email" id="forgot-email" placeholder="Recovery email" autocomplete="email" />
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="forgot-back-btn">Back</button>
+          <button type="submit" class="btn-primary" style="margin-top:0">Send code</button>
+        </div>
+      </form>
+
+      <!-- Step 3: enter the code + choose a new password -->
+      <form id="reset-password-form" hidden>
+        <h3>Enter code</h3>
+        <p>Check the recovery email for a 6-digit code (valid 15 minutes).</p>
+        <p class="modal-error" id="reset-password-error"></p>
+        <input type="text" id="reset-code" placeholder="6-digit code" inputmode="numeric" maxlength="6" />
+        <input type="password" id="reset-new-password" placeholder="New password" autocomplete="new-password" />
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="reset-back-btn">Back</button>
+          <button type="submit" class="btn-primary" style="margin-top:0">Reset password</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <div class="till-frame" id="app-frame" hidden>
@@ -155,6 +185,18 @@
       <!-- MANAGE -->
       <section id="panel-manage" class="panel">
         <div class="manage-grid">
+          <div class="manage-block" style="grid-column: 1 / -1;">
+            <h2>Recovery Email</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">
+              Used for "Forgot password" resets — for both the owner login and the shared staff login.
+            </p>
+            <form id="settings-form" class="inline-form">
+              <input id="settings-email" type="email" placeholder="owner@example.com" required />
+              <button type="submit" class="btn-secondary">Save</button>
+            </form>
+            <p class="modal-error" id="settings-error" style="text-align:left;"></p>
+            <p class="modal-success" id="settings-success" style="text-align:left;"></p>
+          </div>
           <div class="manage-block">
             <h2>Staff</h2>
             <form id="staff-form" class="inline-form">

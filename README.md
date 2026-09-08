@@ -24,6 +24,32 @@ of a stack of handwritten pages.
 The app keeps running as long as the terminal/server is running. To keep it running permanently on
 a shop computer, look into a process manager like `pm2` (`npm install -g pm2` then `pm2 start server.js`).
 
+## Forgot password
+Both logins support "Forgot password?":
+1. The owner sets a **recovery email** once, from **Staff & Services → Recovery Email**. This one
+   email is used for resetting *both* the owner password and the shared staff password — staff
+   don't have individual emails, so a reset there also goes to the owner's inbox.
+2. On the login screen, click "Forgot password?" under the password field, enter that email, and
+   a 6-digit code is sent to it (valid 15 minutes).
+3. Enter the code plus a new password to finish the reset.
+
+**To actually receive the email**, set SMTP details as environment variables:
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=youraddress@gmail.com
+SMTP_PASS=your-16-character-app-password
+SMTP_FROM=youraddress@gmail.com
+```
+(For Gmail, use an ["App Password"](https://myaccount.google.com/apppasswords), not your normal
+login password. Any SMTP provider works the same way — SendGrid, Mailgun, your own mail server,
+etc. — just point `SMTP_HOST`/`SMTP_PORT` at it.)
+
+**If SMTP isn't configured yet**, the reset code is still generated and printed to the server's
+own console/logs (on Render: the **Logs** tab) instead of emailed — handy while you're still
+setting things up, since you can grab the code from there without email working yet. Once SMTP
+is configured, it's emailed for real, and still logged as a backup.
+
 ## Logging in
 Everyone hits a login screen first, with two buttons:
 
@@ -74,6 +100,9 @@ git push -u origin main
 4. Under **Environment Variables**, add:
    - `OWNER_PASSWORD` → your real owner password (don't leave it as `owner123`)
    - `STAFF_PASSWORD` → your real staff password (don't leave it as `staff123`)
+   - Optionally, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` if you want
+     "Forgot password" reset codes to actually arrive by email (see the Forgot Password section
+     below). Without these, reset codes still work, just via the Render Logs tab instead of email.
 5. Click **Create Web Service**. Render gives you a live URL like `https://shop-ledger.onrender.com`
    in a couple of minutes.
 

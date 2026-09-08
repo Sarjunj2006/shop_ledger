@@ -6,11 +6,27 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "db.json");
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// ---------- password hashing (no external deps — Node's built-in scrypt) ----------
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(":")) return false;
+  const [salt, hash] = stored.split(":");
+  const check = crypto.scryptSync(password, salt, 64).toString("hex");
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(check, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 // Create the data file (and its folder) if it doesn't exist yet — matters on a fresh
 // deploy or a fresh Render Disk mount, which starts out empty.
@@ -32,21 +48,90 @@ function ensureDB() {
         { id: "sv5", name: "Head Massage", price: 120 },
       ],
       entries: [],
+      settings: {
+        ownerEmail: process.env.OWNER_EMAIL || "",
+        ownerPasswordHash: hashPassword(process.env.OWNER_PASSWORD || "owner123"),
+        staffPasswordHash: hashPassword(process.env.STAFF_PASSWORD || "staff123"),
+      },
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(seed, null, 2));
   }
 }
 ensureDB();
 
+// ---------- tiny file-backed "database" ----------
+function readDB() {
+  const raw = fs.readFileSync(DB_PATH, "utf-8");
+  const db = JSON.parse(raw);
+  // Back-fill settings for databases created before this feature existed.
+  if (!db.settings) {
+    db.settings = {
+      ownerEmail: process.env.OWNER_EMAIL || "",
+      ownerPasswordHash: hashPassword(process.env.OWNER_PASSWORD || "owner123"),
+      staffPasswordHash: hashPassword(process.env.STAFF_PASSWORD || "staff123"),
+    };
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  }
+  return db;
+}
+function writeDB(db) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+}
+function id(prefix) {
+  return prefix + "_" + crypto.randomBytes(4).toString("hex");
+}
+
+// ---------- email sending (for password-reset codes) ----------
+// Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS (and optionally SMTP_FROM) to actually
+// send reset codes by email. Works with Gmail (an "app password"), SendGrid, Mailgun, etc.
+let mailer = null;
+if (process.env.SMTP_HOST) {
+  mailer = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: Number(process.env.SMTP_PORT) === 465,
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  });
+}
+async function sendResetCodeEmail(to, code, label) {
+  // Always log server-side too — useful during setup, and as a fallback if SMTP isn't configured yet.
+  console.log(`[Shop Ledger] ${label} password reset code for ${to}: ${code} (valid 15 minutes)`);
+  if (!mailer) return false;
+  try {
+    await mailer.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject: `Shop Ledger — ${label} password reset code`,
+      text: `Your ${label.toLowerCase()} password reset code is: ${code}\n\nThis code expires in 15 minutes. If you didn't request this, you can ignore this email.`,
+    });
+    return true;
+  } catch (err) {
+    console.error("[Shop Ledger] Failed to send reset email:", err.message);
+    return false;
+  }
+}
+
+// ---------- reset codes (in-memory, short-lived) ----------
+const resetCodes = new Map(); // code -> { type: "owner"|"staff", expiresAt }
+function makeResetCode(type) {
+  const code = String(crypto.randomInt(100000, 1000000)); // 6 digits
+  resetCodes.set(code, { type, expiresAt: Date.now() + 15 * 60 * 1000 });
+  return code;
+}
+function consumeResetCode(code, type) {
+  const entry = resetCodes.get(code);
+  if (!entry || entry.type !== type || entry.expiresAt < Date.now()) return false;
+  resetCodes.delete(code);
+  return true;
+}
+
 // ---------- owner access ----------
-// Set a real password via the OWNER_PASSWORD environment variable before running in a real shop.
-// Default is only here so it works out of the box — change it.
-const OWNER_PASSWORD = process.env.OWNER_PASSWORD || "owner123";
 const ownerTokens = new Set();
 
 app.post("/api/owner/login", (req, res) => {
   const { password } = req.body;
-  if (password !== OWNER_PASSWORD) {
+  const db = readDB();
+  if (!verifyPassword(password || "", db.settings.ownerPasswordHash)) {
     return res.status(401).json({ error: "Incorrect password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
@@ -68,14 +153,43 @@ function requireOwner(req, res, next) {
   next();
 }
 
+app.post("/api/owner/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  const db = readDB();
+  const registered = db.settings.ownerEmail;
+  if (!registered) {
+    return res.status(400).json({ error: "No recovery email is set up yet. Set one from Staff & Services while logged in as owner." });
+  }
+  // Respond the same way whether or not it matches, so this can't be used to probe for the registered address.
+  if (email && email.trim().toLowerCase() === registered.toLowerCase()) {
+    const code = makeResetCode("owner");
+    await sendResetCodeEmail(registered, code, "Owner");
+  }
+  res.json({ message: "If that email is on file, a reset code has been sent." });
+});
+
+app.post("/api/owner/reset-password", (req, res) => {
+  const { code, newPassword } = req.body;
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: "New password must be at least 4 characters." });
+  }
+  if (!consumeResetCode(code, "owner")) {
+    return res.status(400).json({ error: "That code is invalid or has expired." });
+  }
+  const db = readDB();
+  db.settings.ownerPasswordHash = hashPassword(newPassword);
+  writeDB(db);
+  ownerTokens.clear(); // force re-login everywhere after a password change
+  res.json({ message: "Owner password updated." });
+});
+
 // ---------- staff access (one shared password for the whole team) ----------
-// Set a real password via the STAFF_PASSWORD environment variable before running in a real shop.
-const STAFF_PASSWORD = process.env.STAFF_PASSWORD || "staff123";
 const staffTokens = new Set();
 
 app.post("/api/staff-access/login", (req, res) => {
   const { password } = req.body;
-  if (password !== STAFF_PASSWORD) {
+  const db = readDB();
+  if (!verifyPassword(password || "", db.settings.staffPasswordHash)) {
     return res.status(401).json({ error: "Incorrect password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
@@ -97,17 +211,51 @@ function requireStaff(req, res, next) {
   next();
 }
 
-// ---------- tiny file-backed "database" ----------
-function readDB() {
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(raw);
-}
-function writeDB(db) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-}
-function id(prefix) {
-  return prefix + "_" + crypto.randomBytes(4).toString("hex");
-}
+app.post("/api/staff-access/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  const db = readDB();
+  const registered = db.settings.ownerEmail;
+  if (!registered) {
+    return res.status(400).json({ error: "No recovery email is set up yet. Ask the owner to set one from Staff & Services." });
+  }
+  if (email && email.trim().toLowerCase() === registered.toLowerCase()) {
+    const code = makeResetCode("staff");
+    await sendResetCodeEmail(registered, code, "Staff");
+  }
+  res.json({ message: "If that email is on file, a reset code has been sent." });
+});
+
+app.post("/api/staff-access/reset-password", (req, res) => {
+  const { code, newPassword } = req.body;
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: "New password must be at least 4 characters." });
+  }
+  if (!consumeResetCode(code, "staff")) {
+    return res.status(400).json({ error: "That code is invalid or has expired." });
+  }
+  const db = readDB();
+  db.settings.staffPasswordHash = hashPassword(newPassword);
+  writeDB(db);
+  staffTokens.clear();
+  res.json({ message: "Staff password updated." });
+});
+
+// ---------- owner settings (recovery email) ----------
+app.get("/api/settings", requireOwner, (req, res) => {
+  const db = readDB();
+  res.json({ ownerEmail: db.settings.ownerEmail || "" });
+});
+
+app.patch("/api/settings", requireOwner, (req, res) => {
+  const { ownerEmail } = req.body;
+  if (typeof ownerEmail !== "string" || !/^\S+@\S+\.\S+$/.test(ownerEmail)) {
+    return res.status(400).json({ error: "Enter a valid email address." });
+  }
+  const db = readDB();
+  db.settings.ownerEmail = ownerEmail.trim();
+  writeDB(db);
+  res.json({ ownerEmail: db.settings.ownerEmail });
+});
 
 // ---------- staff ----------
 app.get("/api/staff", (req, res) => {

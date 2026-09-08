@@ -227,6 +227,19 @@ body:not(.owner-mode) #owner-logout-btn { display: none; }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
 .modal-actions button { flex: 1; }
 .modal-error { color: var(--rust); font-size: 12.5px; min-height: 16px; margin: 0 0 6px; }
+.modal-success { color: var(--sage); font-size: 12.5px; margin: 0 0 6px; }
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--brass-deep);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 0;
+  margin: -4px 0 12px;
+  display: block;
+  text-decoration: underline;
+}
+.link-btn:hover { color: var(--rust); }
 
 /* ---------- panels ---------- */
 .panel { display: none; }
