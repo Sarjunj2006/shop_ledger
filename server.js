@@ -82,8 +82,17 @@ function id(prefix) {
 }
 
 // ---------- email sending (for password-reset codes) ----------
-// Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS (and optionally SMTP_FROM) to actually
-// send reset codes by email. Works with Gmail (an "app password"), SendGrid, Mailgun, etc.
+// Two ways to actually send emails — pick whichever fits your host:
+//
+// Option A (recommended on Render): RESEND_API_KEY — sends over plain HTTPS, which Render's
+// free tier does NOT block (unlike SMTP ports 25/465/587, which Render's free tier blocks
+// outright as an anti-spam measure). Sign up free at https://resend.com, verify a sending
+// domain or use their default, and set RESEND_API_KEY (and optionally RESEND_FROM).
+//
+// Option B (SMTP): SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM — works fine on a
+// paid Render instance, your own VPS, or any host that doesn't block SMTP ports.
+//
+// If neither is set, reset codes still work — they just print to these server logs instead.
 let mailer = null;
 if (process.env.SMTP_HOST) {
   mailer = nodemailer.createTransport({
@@ -92,30 +101,65 @@ if (process.env.SMTP_HOST) {
     secure: Number(process.env.SMTP_PORT) === 465,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   });
-  console.log(`[Shop Ledger] SMTP configured: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587}, user=${process.env.SMTP_USER || "(none)"}`);
-} else {
-  console.log("[Shop Ledger] SMTP not configured (SMTP_HOST is not set) — reset codes will only appear in these logs, not by email.");
 }
-async function sendResetCodeEmail(to, code, label) {
-  // Always log server-side too — useful during setup, and as a fallback if SMTP isn't configured yet.
-  console.log(`[Shop Ledger] ${label} password reset code for ${to}: ${code} (valid 15 minutes)`);
-  if (!mailer) {
-    console.log("[Shop Ledger] SMTP not configured (no SMTP_HOST set) — email was NOT sent, code above is log-only.");
-    return false;
-  }
-  try {
-    await mailer.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to,
+if (process.env.RESEND_API_KEY) {
+  console.log("[Shop Ledger] Email sending via Resend API (HTTPS) is configured.");
+} else if (process.env.SMTP_HOST) {
+  console.log(`[Shop Ledger] Email sending via SMTP configured: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587}, user=${process.env.SMTP_USER || "(none)"}. Note: this will time out on Render's free tier, which blocks outbound SMTP — use RESEND_API_KEY instead if you're on Render free tier.`);
+} else {
+  console.log("[Shop Ledger] No email sending configured (set RESEND_API_KEY, or SMTP_HOST for SMTP) — reset codes will only appear in these logs.");
+}
+
+async function sendViaResend(to, code, label) {
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM || "Shop Ledger <onboarding@resend.dev>",
+      to: [to],
       subject: `Shop Ledger — ${label} password reset code`,
       text: `Your ${label.toLowerCase()} password reset code is: ${code}\n\nThis code expires in 15 minutes. If you didn't request this, you can ignore this email.`,
-    });
-    console.log(`[Shop Ledger] Reset email sent successfully to ${to}.`);
-    return true;
-  } catch (err) {
-    console.error("[Shop Ledger] Failed to send reset email:", err.message);
-    return false;
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend API returned ${res.status}: ${body}`);
   }
+}
+
+async function sendResetCodeEmail(to, code, label) {
+  // Always log server-side too — useful during setup, and as a fallback if nothing else is configured.
+  console.log(`[Shop Ledger] ${label} password reset code for ${to}: ${code} (valid 15 minutes)`);
+  if (process.env.RESEND_API_KEY) {
+    try {
+      await sendViaResend(to, code, label);
+      console.log(`[Shop Ledger] Reset email sent successfully to ${to} via Resend.`);
+      return true;
+    } catch (err) {
+      console.error("[Shop Ledger] Failed to send reset email via Resend:", err.message);
+      return false;
+    }
+  }
+  if (mailer) {
+    try {
+      await mailer.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to,
+        subject: `Shop Ledger — ${label} password reset code`,
+        text: `Your ${label.toLowerCase()} password reset code is: ${code}\n\nThis code expires in 15 minutes. If you didn't request this, you can ignore this email.`,
+      });
+      console.log(`[Shop Ledger] Reset email sent successfully to ${to} via SMTP.`);
+      return true;
+    } catch (err) {
+      console.error("[Shop Ledger] Failed to send reset email via SMTP:", err.message);
+      return false;
+    }
+  }
+  console.log("[Shop Ledger] No email sending method configured — code above is log-only.");
+  return false;
 }
 
 // ---------- reset codes (in-memory, short-lived) ----------

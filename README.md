@@ -33,7 +33,26 @@ Both logins support "Forgot password?":
    a 6-digit code is sent to it (valid 15 minutes).
 3. Enter the code plus a new password to finish the reset.
 
-**To actually receive the email**, set SMTP details as environment variables:
+**To actually receive the email**, you have two options:
+
+### Option A — Resend (recommended if you're on Render's free tier)
+Render's free tier **blocks outbound SMTP** (ports 25, 465, 587) entirely as an anti-spam
+measure — so Gmail/SMTP will always time out there, no matter how correctly it's configured.
+[Resend](https://resend.com) sends over plain HTTPS instead, which Render's free tier does
+**not** block.
+
+1. Sign up free at [resend.com](https://resend.com) (100 emails/day, 3,000/month free — plenty
+   for this).
+2. Grab an API key from their dashboard.
+3. Set this one environment variable:
+   ```
+   RESEND_API_KEY=re_your_key_here
+   ```
+4. Optionally set `RESEND_FROM` to a custom "from" address once you've verified a domain with
+   Resend; otherwise it defaults to Resend's own shared sending address, which works fine for
+   getting started.
+
+### Option B — SMTP (fine on a paid Render instance, your own VPS, etc.)
 ```bash
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -42,13 +61,13 @@ SMTP_PASS=your-16-character-app-password
 SMTP_FROM=youraddress@gmail.com
 ```
 (For Gmail, use an ["App Password"](https://myaccount.google.com/apppasswords), not your normal
-login password. Any SMTP provider works the same way — SendGrid, Mailgun, your own mail server,
-etc. — just point `SMTP_HOST`/`SMTP_PORT` at it.)
+login password.) **This will time out on Render's free tier** — use Option A there instead.
 
-**If SMTP isn't configured yet**, the reset code is still generated and printed to the server's
+If both `RESEND_API_KEY` and SMTP variables are set, Resend is used first.
+
+**If neither is configured yet**, the reset code is still generated and printed to the server's
 own console/logs (on Render: the **Logs** tab) instead of emailed — handy while you're still
-setting things up, since you can grab the code from there without email working yet. Once SMTP
-is configured, it's emailed for real, and still logged as a backup.
+setting things up.
 
 ## Logging in
 Everyone hits a login screen first, with two buttons:
