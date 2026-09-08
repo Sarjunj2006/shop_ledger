@@ -562,6 +562,74 @@ td.amount { font-family: "IBM Plex Mono", monospace; color: var(--brass-deep); f
 }
 .manage-list button:hover { color: var(--rust); }
 
+/* ---------- settings ---------- */
+.settings-card {
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 28px;
+  max-width: 560px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+}
+.settings-card-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--paper-line);
+}
+.settings-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(189,138,63,0.12);
+  color: var(--brass-deep);
+  font-size: 18px;
+}
+.settings-card-header h3 {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  margin: 2px 0 6px;
+  color: var(--ink);
+}
+.settings-card-header p {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+.settings-form label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.settings-form input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid var(--paper-line);
+  background: #fffdf8;
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+.settings-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings-form-footer .modal-error,
+.settings-form-footer .modal-success {
+  margin: 0;
+  flex: 1;
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 780px) {
   #panel-entry.active { grid-template-columns: 1fr; }

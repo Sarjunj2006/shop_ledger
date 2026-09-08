@@ -39,6 +39,7 @@ function switchToTab(tabName) {
   if (tabName === "today") loadToday();
   if (tabName === "reports") loadReports();
   if (tabName === "manage") loadManage();
+  if (tabName === "settings") loadSettings();
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -388,22 +389,7 @@ async function exportCSV() {
   a.click();
 }
 
-// ---------- manage staff & services & recovery email ----------
-document.getElementById("settings-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById("settings-error");
-  const successEl = document.getElementById("settings-success");
-  errEl.textContent = "";
-  successEl.textContent = "";
-  const input = document.getElementById("settings-email");
-  try {
-    await api("/settings", { method: "PATCH", body: JSON.stringify({ ownerEmail: input.value }) });
-    successEl.textContent = "Saved.";
-  } catch (err) {
-    errEl.textContent = err.message;
-  }
-});
-
+// ---------- manage staff & services ----------
 document.getElementById("staff-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("staff-name");
@@ -428,9 +414,7 @@ document.getElementById("service-form").addEventListener("submit", async (e) => 
 });
 
 async function loadManage() {
-  const [staff, services, settings] = await Promise.all([api("/staff"), api("/services"), api("/settings")]);
-  document.getElementById("settings-email").value = settings.ownerEmail || "";
-
+  const [staff, services] = await Promise.all([api("/staff"), api("/services")]);
   const staffList = document.getElementById("staff-list");
   staffList.innerHTML = staff
     .map((s) => `<li>${s.name}<button data-id="${s.id}" data-type="staff">Remove</button></li>`)
@@ -452,6 +436,27 @@ async function loadManage() {
       loadFormOptions();
     });
   });
+}
+
+// ---------- settings (recovery email) ----------
+document.getElementById("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("settings-error");
+  const successEl = document.getElementById("settings-success");
+  errEl.textContent = "";
+  successEl.textContent = "";
+  const input = document.getElementById("settings-email");
+  try {
+    await api("/settings", { method: "PATCH", body: JSON.stringify({ ownerEmail: input.value }) });
+    successEl.textContent = "Saved.";
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+});
+
+async function loadSettings() {
+  const settings = await api("/settings");
+  document.getElementById("settings-email").value = settings.ownerEmail || "";
 }
 
 // ---------- init ----------

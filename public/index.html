@@ -78,6 +78,7 @@
           <button data-tab="today" class="tab owner-only">Today's Book</button>
           <button data-tab="reports" class="tab owner-only">Reports</button>
           <button data-tab="manage" class="tab owner-only">Staff & Services</button>
+          <button data-tab="settings" class="tab owner-only">Settings</button>
         </nav>
         <div class="owner-controls">
           <button id="staff-logout-btn" class="owner-btn staff-only">Log out</button>
@@ -185,18 +186,6 @@
       <!-- MANAGE -->
       <section id="panel-manage" class="panel">
         <div class="manage-grid">
-          <div class="manage-block" style="grid-column: 1 / -1;">
-            <h2>Recovery Email</h2>
-            <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">
-              Used for "Forgot password" resets — for both the owner login and the shared staff login.
-            </p>
-            <form id="settings-form" class="inline-form">
-              <input id="settings-email" type="email" placeholder="owner@example.com" required />
-              <button type="submit" class="btn-secondary">Save</button>
-            </form>
-            <p class="modal-error" id="settings-error" style="text-align:left;"></p>
-            <p class="modal-success" id="settings-success" style="text-align:left;"></p>
-          </div>
           <div class="manage-block">
             <h2>Staff</h2>
             <form id="staff-form" class="inline-form">
@@ -214,6 +203,31 @@
             </form>
             <ul id="service-list" class="manage-list"></ul>
           </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="panel-settings" class="panel">
+        <div class="panel-head">
+          <h2>Settings</h2>
+        </div>
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <span class="settings-icon">✉</span>
+            <div>
+              <h3>Account Recovery</h3>
+              <p>This email is used to verify password-reset requests for both the owner login and the shared staff login.</p>
+            </div>
+          </div>
+          <form id="settings-form" class="settings-form">
+            <label for="settings-email">Recovery email</label>
+            <input id="settings-email" type="email" placeholder="owner@example.com" required />
+            <div class="settings-form-footer">
+              <p class="modal-error" id="settings-error"></p>
+              <p class="modal-success" id="settings-success"></p>
+              <button type="submit" class="btn-primary" style="margin-top:0;width:auto;padding:10px 22px;">Save changes</button>
+            </div>
+          </form>
         </div>
       </section>
     </main>
