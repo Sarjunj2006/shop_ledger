@@ -20,9 +20,9 @@ function ensureDB() {
   if (!fs.existsSync(DB_PATH)) {
     const seed = {
       staff: [
-        { id: "s1", name: "Ravi", active: true, pin: "1111" },
-        { id: "s2", name: "Kumar", active: true, pin: "2222" },
-        { id: "s3", name: "Priya", active: true, pin: "3333" },
+        { id: "s1", name: "Ravi", active: true },
+        { id: "s2", name: "Kumar", active: true },
+        { id: "s3", name: "Priya", active: true },
       ],
       services: [
         { id: "sv1", name: "Haircut", price: 150 },
@@ -68,23 +68,22 @@ function requireOwner(req, res, next) {
   next();
 }
 
-// ---------- staff access (PIN login) ----------
-const staffTokens = new Map(); // token -> staffId
+// ---------- staff access (one shared password for the whole team) ----------
+// Set a real password via the STAFF_PASSWORD environment variable before running in a real shop.
+const STAFF_PASSWORD = process.env.STAFF_PASSWORD || "staff123";
+const staffTokens = new Set();
 
-app.post("/api/staff/login", (req, res) => {
-  const { staffId, pin } = req.body;
-  if (!staffId || !pin) return res.status(400).json({ error: "Select your name and enter your PIN." });
-  const db = readDB();
-  const staff = db.staff.find((s) => s.id === staffId && s.active);
-  if (!staff || staff.pin !== String(pin)) {
-    return res.status(401).json({ error: "That name and PIN don't match." });
+app.post("/api/staff-access/login", (req, res) => {
+  const { password } = req.body;
+  if (password !== STAFF_PASSWORD) {
+    return res.status(401).json({ error: "Incorrect password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
-  staffTokens.set(token, staff.id);
-  res.json({ token, staffId: staff.id, staffName: staff.name });
+  staffTokens.add(token);
+  res.json({ token });
 });
 
-app.post("/api/staff/logout", (req, res) => {
+app.post("/api/staff-access/logout", (req, res) => {
   const token = req.headers["x-staff-token"];
   if (token) staffTokens.delete(token);
   res.status(204).end();
@@ -92,11 +91,9 @@ app.post("/api/staff/logout", (req, res) => {
 
 function requireStaff(req, res, next) {
   const token = req.headers["x-staff-token"];
-  const staffId = token && staffTokens.get(token);
-  if (!staffId) {
-    return res.status(401).json({ error: "Please log in again." });
+  if (!token || !staffTokens.has(token)) {
+    return res.status(401).json({ error: "Staff access required." });
   }
-  req.staffId = staffId;
   next();
 }
 
@@ -115,18 +112,14 @@ function id(prefix) {
 // ---------- staff ----------
 app.get("/api/staff", (req, res) => {
   const db = readDB();
-  const token = req.headers["x-owner-token"];
-  const owner = token && ownerTokens.has(token);
-  const staff = owner ? db.staff : db.staff.map(({ id, name, active }) => ({ id, name, active }));
-  res.json(staff);
+  res.json(db.staff);
 });
 
 app.post("/api/staff", requireOwner, (req, res) => {
-  const { name, pin } = req.body;
+  const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Name is required." });
-  if (!pin || !/^\d{4}$/.test(String(pin))) return res.status(400).json({ error: "PIN must be exactly 4 digits." });
   const db = readDB();
-  const member = { id: id("s"), name: name.trim(), active: true, pin: String(pin) };
+  const member = { id: id("s"), name: name.trim(), active: true };
   db.staff.push(member);
   writeDB(db);
   res.status(201).json(member);
@@ -138,10 +131,6 @@ app.patch("/api/staff/:id", requireOwner, (req, res) => {
   if (!member) return res.status(404).json({ error: "Staff member not found." });
   if (typeof req.body.name === "string") member.name = req.body.name.trim();
   if (typeof req.body.active === "boolean") member.active = req.body.active;
-  if (typeof req.body.pin !== "undefined") {
-    if (!/^\d{4}$/.test(String(req.body.pin))) return res.status(400).json({ error: "PIN must be exactly 4 digits." });
-    member.pin = String(req.body.pin);
-  }
   writeDB(db);
   res.json(member);
 });
@@ -205,14 +194,14 @@ app.get("/api/entries", requireOwner, (req, res) => {
 });
 
 app.post("/api/entries", requireStaff, (req, res) => {
-  const { serviceId, price, paymentMethod, customerName, note } = req.body;
-  if (!serviceId) return res.status(400).json({ error: "Service is required." });
+  const { staffId, serviceId, price, paymentMethod, customerName, note } = req.body;
+  if (!staffId || !serviceId) return res.status(400).json({ error: "Staff and service are required." });
   if (typeof price !== "number" || price < 0) return res.status(400).json({ error: "Price must be a non-negative number." });
   const validMethods = ["cash", "card", "upi", "other"];
   if (!validMethods.includes(paymentMethod)) return res.status(400).json({ error: "Invalid payment method." });
 
   const db = readDB();
-  const staff = db.staff.find((s) => s.id === req.staffId);
+  const staff = db.staff.find((s) => s.id === staffId);
   const service = db.services.find((s) => s.id === serviceId);
   if (!staff) return res.status(404).json({ error: "Staff member not found." });
   if (!service) return res.status(404).json({ error: "Service not found." });
@@ -220,7 +209,7 @@ app.post("/api/entries", requireStaff, (req, res) => {
   const now = new Date();
   const entry = {
     id: id("e"),
-    staffId: staff.id,
+    staffId,
     staffName: staff.name,
     serviceId,
     serviceName: service.name,

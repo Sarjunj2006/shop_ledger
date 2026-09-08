@@ -4,7 +4,6 @@ let servicesCache = [];
 let selectedPayment = "cash";
 const OWNER_TOKEN_KEY = "shopLedgerOwnerToken";
 const STAFF_TOKEN_KEY = "shopLedgerStaffToken";
-const STAFF_NAME_KEY = "shopLedgerStaffName";
 
 function ownerToken() {
   return sessionStorage.getItem(OWNER_TOKEN_KEY);
@@ -18,9 +17,6 @@ function staffToken() {
 function isStaff() {
   return !!staffToken();
 }
-function staffName() {
-  return sessionStorage.getItem(STAFF_NAME_KEY) || "";
-}
 function setOwnerMode(on) {
   document.body.classList.toggle("owner-mode", on);
 }
@@ -31,7 +27,6 @@ function showLoginScreen() {
 function showApp() {
   document.getElementById("login-screen").hidden = true;
   document.getElementById("app-frame").hidden = false;
-  document.getElementById("staff-session-badge").textContent = isStaff() ? `Logged in as ${staffName()}` : "";
 }
 
 function switchToTab(tabName) {
@@ -53,77 +48,44 @@ document.getElementById("tabs").addEventListener("click", (e) => {
   if (!btn) return;
   // Owner-only tabs stay inert for staff even if somehow clicked (e.g. dev tools).
   if (btn.classList.contains("owner-only") && !isOwner()) {
-    openOwnerModal();
+    openAccessModal("owner");
     return;
   }
   switchToTab(btn.dataset.tab);
 });
 
-// ---------- staff login (PIN) ----------
-document.getElementById("staff-login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById("staff-login-error");
-  errEl.textContent = "";
-  const staffId = document.getElementById("login-staff").value;
-  const pin = document.getElementById("login-pin").value;
-  try {
-    const res = await fetch(API + "/staff/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ staffId, pin }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || "Login failed.");
-    }
-    const data = await res.json();
-    sessionStorage.setItem(STAFF_TOKEN_KEY, data.token);
-    sessionStorage.setItem(STAFF_NAME_KEY, data.staffName);
-    document.getElementById("login-pin").value = "";
-    showApp();
-    switchToTab("entry");
-  } catch (err) {
-    errEl.textContent = err.message;
-  }
-});
+// ---------- shared login modal (staff password OR owner password) ----------
+const accessModal = document.getElementById("access-modal");
+let accessModalMode = "staff"; // "staff" | "owner"
 
-document.getElementById("staff-logout-btn").addEventListener("click", async () => {
-  try {
-    await fetch(API + "/staff/logout", {
-      method: "POST",
-      headers: { "x-staff-token": staffToken() || "" },
-    });
-  } catch {}
-  sessionStorage.removeItem(STAFF_TOKEN_KEY);
-  sessionStorage.removeItem(STAFF_NAME_KEY);
-  if (isOwner()) {
-    document.getElementById("staff-session-badge").textContent = "";
-  } else {
-    showLoginScreen();
-  }
-});
-
-// ---------- owner login / logout ----------
-const ownerModal = document.getElementById("owner-modal");
-function openOwnerModal() {
-  document.getElementById("owner-login-error").textContent = "";
-  document.getElementById("owner-password").value = "";
-  ownerModal.hidden = false;
-  document.getElementById("owner-password").focus();
+function openAccessModal(mode) {
+  accessModalMode = mode;
+  const isOwnerMode = mode === "owner";
+  document.getElementById("access-modal-title").textContent = isOwnerMode ? "Owner access" : "Staff access";
+  document.getElementById("access-modal-desc").textContent = isOwnerMode
+    ? "Enter the owner password to see reports, today's book, and staff/service settings."
+    : "Enter the staff password to log services.";
+  document.getElementById("access-login-error").textContent = "";
+  document.getElementById("access-password").value = "";
+  accessModal.hidden = false;
+  document.getElementById("access-password").focus();
 }
-function closeOwnerModal() {
-  ownerModal.hidden = true;
+function closeAccessModal() {
+  accessModal.hidden = true;
 }
-document.getElementById("owner-login-btn").addEventListener("click", openOwnerModal);
-document.getElementById("owner-login-link").addEventListener("click", openOwnerModal);
-document.getElementById("owner-cancel-btn").addEventListener("click", closeOwnerModal);
 
-document.getElementById("owner-login-form").addEventListener("submit", async (e) => {
+document.getElementById("staff-login-open").addEventListener("click", () => openAccessModal("staff"));
+document.getElementById("owner-login-open").addEventListener("click", () => openAccessModal("owner"));
+document.getElementById("owner-login-btn").addEventListener("click", () => openAccessModal("owner"));
+document.getElementById("access-cancel-btn").addEventListener("click", closeAccessModal);
+
+document.getElementById("access-login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const errEl = document.getElementById("owner-login-error");
-  const password = document.getElementById("owner-password").value;
+  const errEl = document.getElementById("access-login-error");
+  const password = document.getElementById("access-password").value;
+  const endpoint = accessModalMode === "owner" ? "/owner/login" : "/staff-access/login";
   try {
-    const res = await fetch(API + "/owner/login", {
+    const res = await fetch(API + endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
@@ -133,14 +95,32 @@ document.getElementById("owner-login-form").addEventListener("submit", async (e)
       throw new Error(body.error || "Incorrect password.");
     }
     const { token } = await res.json();
-    sessionStorage.setItem(OWNER_TOKEN_KEY, token);
-    setOwnerMode(true);
-    closeOwnerModal();
-    showApp();
-    switchToTab("today");
+    if (accessModalMode === "owner") {
+      sessionStorage.setItem(OWNER_TOKEN_KEY, token);
+      setOwnerMode(true);
+      closeAccessModal();
+      showApp();
+      switchToTab("today");
+    } else {
+      sessionStorage.setItem(STAFF_TOKEN_KEY, token);
+      closeAccessModal();
+      showApp();
+      switchToTab("entry");
+    }
   } catch (err) {
     errEl.textContent = err.message;
   }
+});
+
+document.getElementById("staff-logout-btn").addEventListener("click", async () => {
+  try {
+    await fetch(API + "/staff-access/logout", {
+      method: "POST",
+      headers: { "x-staff-token": staffToken() || "" },
+    });
+  } catch {}
+  sessionStorage.removeItem(STAFF_TOKEN_KEY);
+  if (!isOwner()) showLoginScreen();
 });
 
 document.getElementById("owner-logout-btn").addEventListener("click", async () => {
@@ -171,7 +151,6 @@ async function api(path, opts = {}) {
       // Token missing/expired (e.g. server restarted) — drop back to the login screen.
       sessionStorage.removeItem(OWNER_TOKEN_KEY);
       sessionStorage.removeItem(STAFF_TOKEN_KEY);
-      sessionStorage.removeItem(STAFF_NAME_KEY);
       setOwnerMode(false);
       showLoginScreen();
     }
@@ -190,9 +169,9 @@ function todayStr() {
 // ---------- entry form ----------
 async function loadFormOptions() {
   [staffCache, servicesCache] = await Promise.all([api("/staff"), api("/services")]);
-  const loginStaffSel = document.getElementById("login-staff");
+  const staffSel = document.getElementById("f-staff");
   const svcSel = document.getElementById("f-service");
-  loginStaffSel.innerHTML = staffCache
+  staffSel.innerHTML = staffCache
     .filter((s) => s.active)
     .map((s) => `<option value="${s.id}">${s.name}</option>`)
     .join("");
@@ -222,6 +201,7 @@ document.getElementById("entry-form").addEventListener("submit", async (e) => {
   statusEl.textContent = "";
   statusEl.className = "status-msg";
 
+  const staffId = document.getElementById("f-staff").value;
   const serviceId = document.getElementById("f-service").value;
   const price = Number(document.getElementById("f-price").value);
   const customerName = document.getElementById("f-customer").value;
@@ -230,7 +210,7 @@ document.getElementById("entry-form").addEventListener("submit", async (e) => {
   try {
     const entry = await api("/entries", {
       method: "POST",
-      body: JSON.stringify({ serviceId, price, paymentMethod: selectedPayment, customerName, note }),
+      body: JSON.stringify({ staffId, serviceId, price, paymentMethod: selectedPayment, customerName, note }),
     });
     statusEl.textContent = `Logged: ${entry.serviceName} by ${entry.staffName} — ${money(entry.price)}`;
     prependRecent(entry);
@@ -345,19 +325,11 @@ async function exportCSV() {
 // ---------- manage staff & services ----------
 document.getElementById("staff-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const errEl = document.getElementById("staff-manage-error");
-  const nameInput = document.getElementById("staff-name");
-  const pinInput = document.getElementById("staff-pin");
-  try {
-    await api("/staff", { method: "POST", body: JSON.stringify({ name: nameInput.value, pin: pinInput.value }) });
-    nameInput.value = "";
-    pinInput.value = "";
-    if (errEl) errEl.textContent = "";
-    loadManage();
-    loadFormOptions();
-  } catch (err) {
-    if (errEl) errEl.textContent = err.message;
-  }
+  const input = document.getElementById("staff-name");
+  await api("/staff", { method: "POST", body: JSON.stringify({ name: input.value }) });
+  input.value = "";
+  loadManage();
+  loadFormOptions();
 });
 
 document.getElementById("service-form").addEventListener("submit", async (e) => {
@@ -378,15 +350,7 @@ async function loadManage() {
   const [staff, services] = await Promise.all([api("/staff"), api("/services")]);
   const staffList = document.getElementById("staff-list");
   staffList.innerHTML = staff
-    .map(
-      (s) =>
-        `<li>${s.name} <span class="meta">PIN ${s.pin || "----"}</span>
-          <span>
-            <button data-id="${s.id}" data-type="staff-pin">Change PIN</button>
-            <button data-id="${s.id}" data-type="staff">Remove</button>
-          </span>
-        </li>`
-    )
+    .map((s) => `<li>${s.name}<button data-id="${s.id}" data-type="staff">Remove</button></li>`)
     .join("");
 
   const serviceList = document.getElementById("service-list");
@@ -397,24 +361,7 @@ async function loadManage() {
     )
     .join("");
 
-  document.querySelectorAll('#staff-list button[data-type="staff-pin"]').forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const newPin = prompt("New 4-digit PIN:");
-      if (newPin === null) return;
-      if (!/^\d{4}$/.test(newPin)) {
-        alert("PIN must be exactly 4 digits.");
-        return;
-      }
-      try {
-        await api("/staff/" + btn.dataset.id, { method: "PATCH", body: JSON.stringify({ pin: newPin }) });
-        loadManage();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-  });
-
-  document.querySelectorAll('#staff-list button[data-type="staff"], #service-list button[data-type="service"]').forEach((btn) => {
+  document.querySelectorAll("#staff-list button, #service-list button").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const path = btn.dataset.type === "staff" ? "/staff/" : "/services/";
       await api(path + btn.dataset.id, { method: "DELETE" });

@@ -14,15 +14,23 @@
       <span class="brand-mark">✂</span>
       <h1>Shop Ledger</h1>
       <p class="tagline">Who's logging in?</p>
-      <form id="staff-login-form">
-        <select id="login-staff" required></select>
-        <input id="login-pin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" autocomplete="off" required />
-        <p class="modal-error" id="staff-login-error"></p>
-        <button type="submit" class="btn-primary" style="margin-top:0">Log In</button>
-      </form>
+      <button id="staff-login-open" class="btn-primary" style="margin-top:0">Staff Login</button>
       <div class="login-divider">or</div>
-      <button id="owner-login-link" class="btn-secondary" style="width:100%">Owner Login</button>
+      <button id="owner-login-open" class="btn-secondary" style="width:100%">Owner Login</button>
     </div>
+  </div>
+
+  <div class="modal-overlay" id="access-modal" hidden>
+    <form class="modal-card" id="access-login-form">
+      <h3 id="access-modal-title">Login</h3>
+      <p id="access-modal-desc"></p>
+      <p class="modal-error" id="access-login-error"></p>
+      <input type="password" id="access-password" placeholder="Password" autocomplete="current-password" />
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="access-cancel-btn">Cancel</button>
+        <button type="submit" class="btn-primary" style="margin-top:0">Unlock</button>
+      </div>
+    </form>
   </div>
 
   <div class="till-frame" id="app-frame" hidden>
@@ -42,7 +50,6 @@
           <button data-tab="manage" class="tab owner-only">Staff & Services</button>
         </nav>
         <div class="owner-controls">
-          <span id="staff-session-badge" class="session-badge"></span>
           <button id="staff-logout-btn" class="owner-btn staff-only">Log out</button>
           <button id="owner-login-btn" class="owner-btn">Owner Login</button>
           <button id="owner-logout-btn" class="owner-btn">Log out of owner view</button>
@@ -50,23 +57,14 @@
       </div>
     </header>
 
-    <div class="modal-overlay" id="owner-modal" hidden>
-      <form class="modal-card" id="owner-login-form">
-        <h3>Owner access</h3>
-        <p>Enter the owner password to see reports, today's book, and staff/service settings.</p>
-        <p class="modal-error" id="owner-login-error"></p>
-        <input type="password" id="owner-password" placeholder="Password" autocomplete="current-password" />
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="owner-cancel-btn">Cancel</button>
-          <button type="submit" class="btn-primary" style="margin-top:0">Unlock</button>
-        </div>
-      </form>
-    </div>
-
     <main>
       <!-- NEW ENTRY -->
       <section id="panel-entry" class="panel active">
         <form id="entry-form" class="ledger-form">
+          <div class="field">
+            <label>Who did the work</label>
+            <select id="f-staff" required></select>
+          </div>
           <div class="field">
             <label>Service done</label>
             <select id="f-service" required></select>
@@ -160,11 +158,9 @@
           <div class="manage-block">
             <h2>Staff</h2>
             <form id="staff-form" class="inline-form">
-              <input id="staff-name" type="text" placeholder="Staff name" required />
-              <input id="staff-pin" type="text" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" required pattern="\d{4}" style="max-width:120px" />
+              <input id="staff-name" type="text" placeholder="Add staff name" required />
               <button type="submit" class="btn-secondary">Add</button>
             </form>
-            <p class="modal-error" id="staff-manage-error" style="text-align:left;margin:-6px 0 10px;"></p>
             <ul id="staff-list" class="manage-list"></ul>
           </div>
           <div class="manage-block">

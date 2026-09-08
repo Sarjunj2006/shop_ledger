@@ -24,38 +24,28 @@ of a stack of handwritten pages.
 The app keeps running as long as the terminal/server is running. To keep it running permanently on
 a shop computer, look into a process manager like `pm2` (`npm install -g pm2` then `pm2 start server.js`).
 
-## Staff login (PINs)
-Every staff member logs in with their **name + a 4-digit PIN** before they can log any service —
-no more picking a name from an open dropdown. The owner sets each PIN from **Staff & Services**
-(each staff row has a "Change PIN" button), and can hand it out to that person however they like
-(write it down, tell them, etc).
+## Logging in
+Everyone hits a login screen first, with two buttons:
 
-The default seed data ships with three staff members and starter PINs (`1111`, `2222`, `3333`) —
-change these before real use, the same way you'd change the default owner password.
+- **Staff Login** — one shared password for the whole team. Any staff member enters it to reach
+  **New Entry**, then still picks their own name from the "Who did the work" dropdown when they
+  log each service (so the record is per-person even though the login itself is shared).
+- **Owner Login** — a separate password that unlocks **Today's Book**, **Reports**, and
+  **Staff & Services**.
 
-A staff member's login lasts for that browser tab's session. If two people share one till device
-during a shift, whoever's turn it is logs in, logs their service, then clicks **Log out** so the
-next person logs in as themselves — this is what makes "who did the work" reliable instead of
-relying on people remembering to pick the right name from a list.
-
-## Owner access
-Only the **New Entry** tab is visible to staff. **Today's Book**, **Reports**, and **Staff &
-Services** are locked — clicking "Owner Login" (top right) prompts for a password, and only
-after that does the owner see those tabs.
-
-The default password is `owner123`. **Change it before using this in your shop.** Set your own
-password with an environment variable when starting the server:
-
+Both default passwords are placeholders — **change them before real use**:
 ```bash
 # Windows PowerShell
-$env:OWNER_PASSWORD="your-real-password"; npm start
+$env:STAFF_PASSWORD="your-staff-password"; $env:OWNER_PASSWORD="your-owner-password"; npm start
 
 # macOS/Linux
-OWNER_PASSWORD="your-real-password" npm start
+STAFF_PASSWORD="your-staff-password" OWNER_PASSWORD="your-owner-password" npm start
 ```
+Defaults if unset: `staff123` and `owner123`.
 
-Owner access lasts for that browser tab's session (closing the browser or clicking "Log out of
-owner view" clears it); each device/browser needs to log in separately.
+Each login lasts for that browser tab's session — closing the browser, or clicking the relevant
+"Log out," clears it. Staff and owner sessions are independent, so an owner can log in to check
+reports without disturbing a staff member's session on the same device, and vice versa.
 
 ## Deploying to Render
 
@@ -83,6 +73,7 @@ git push -u origin main
    - **Start Command**: `npm start`
 4. Under **Environment Variables**, add:
    - `OWNER_PASSWORD` → your real owner password (don't leave it as `owner123`)
+   - `STAFF_PASSWORD` → your real staff password (don't leave it as `staff123`)
 5. Click **Create Web Service**. Render gives you a live URL like `https://shop-ledger.onrender.com`
    in a couple of minutes.
 
