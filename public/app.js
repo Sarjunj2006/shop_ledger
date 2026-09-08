@@ -172,10 +172,15 @@ document.getElementById("entry-form").addEventListener("submit", async (e) => {
 
 function prependRecent(entry) {
   const list = document.getElementById("recent-list");
+  // Only one confirmation shown at a time — clear anything still fading from a previous submit.
+  list.innerHTML = "";
   const li = document.createElement("li");
   li.innerHTML = `<span>${entry.time} · ${entry.staffName} · ${entry.serviceName}</span><span class="amt">${money(entry.price)}</span>`;
-  list.prepend(li);
-  while (list.children.length > 8) list.removeChild(list.lastChild);
+  list.appendChild(li);
+
+  // Let it sit for a few seconds, then fade out and remove.
+  setTimeout(() => li.classList.add("fade-out"), 3500);
+  setTimeout(() => li.remove(), 4100);
 }
 
 // ---------- today's book ----------

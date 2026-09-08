@@ -317,7 +317,10 @@ body:not(.owner-mode) #owner-logout-btn { display: none; }
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  opacity: 1;
+  transition: opacity 0.6s ease;
 }
+.recent-list li.fade-out { opacity: 0; }
 .recent-list li span.amt {
   font-family: "IBM Plex Mono", monospace;
   color: var(--brass);
