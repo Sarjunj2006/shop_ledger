@@ -5,9 +5,25 @@ what it was, how much, how it was paid), and the owner gets a live dashboard and
 of a stack of handwritten pages.
 
 ## What's inside
-- **Backend**: Node.js + Express, storing data in a plain JSON file (`data/db.json`) — no database
-  server to install, easy to back up (it's just a file), easy to inspect.
+- **Backend**: Node.js + Express, storing data in **Postgres** (works great with [Neon's](https://neon.tech)
+  free tier — see setup below). No file-based storage, so nothing gets lost when the server
+  restarts or redeploys.
 - **Frontend**: plain HTML/CSS/JS (no build step) served by the same server.
+
+## Setting up the database (Neon, free)
+
+1. Sign up free at [neon.tech](https://neon.tech) — no credit card needed.
+2. Create a new project (Neon calls the default database `neondb`, that's fine to keep).
+3. On your project's dashboard, find the **connection string** — it looks like:
+   ```
+   postgresql://user:password@ep-something.region.aws.neon.tech/neondb?sslmode=require
+   ```
+   Copy the whole thing.
+4. Set it as an environment variable named `DATABASE_URL` — locally in your terminal, or on
+   Render under **Environment** (see the deploy steps further down).
+
+That's it — no manual SQL needed. The first time the server starts with `DATABASE_URL` set, it
+automatically creates all the tables and seeds the default staff/services if they're empty.
 
 ## Running it
 
@@ -15,9 +31,16 @@ of a stack of handwritten pages.
 2. In this folder, run:
    ```bash
    npm install
-   npm start
    ```
-3. Open **http://localhost:3000** in a browser. On a shop counter, open it on the tablet/laptop
+3. Set your Neon connection string (see above), then start the server:
+   ```bash
+   # Windows PowerShell
+   $env:DATABASE_URL="postgresql://your-neon-connection-string"; npm start
+
+   # macOS/Linux
+   DATABASE_URL="postgresql://your-neon-connection-string" npm start
+   ```
+4. Open **http://localhost:3000** in a browser. On a shop counter, open it on the tablet/laptop
    you keep at the till, or on any device connected to the same network as the computer running
    the server (use that computer's local IP instead of `localhost`, e.g. `http://192.168.1.5:3000`).
 
@@ -117,58 +140,51 @@ git push -u origin main
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
 4. Under **Environment Variables**, add:
+   - `DATABASE_URL` → your Neon connection string (see "Setting up the database" above) — this
+     is what makes your data actually persist, since Render's own local storage does not, even
+     on the free tier.
    - `OWNER_PASSWORD` → your real owner password (don't leave it as `owner123`)
    - `STAFF_PASSWORD` → your real staff password (don't leave it as `staff123`)
-   - Optionally, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` if you want
-     "Forgot password" reset codes to actually arrive by email (see the Forgot Password section
-     below). Without these, reset codes still work, just via the Render Logs tab instead of email.
+   - Optionally, `RESEND_API_KEY` (or `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`)
+     if you want "Forgot password" reset codes to actually arrive by email (see the Forgot
+     Password section above). Without these, reset codes still work, just via the Render Logs
+     tab instead of email.
 5. Click **Create Web Service**. Render gives you a live URL like `https://shop-ledger.onrender.com`
-   in a couple of minutes.
+   in a couple of minutes. The first startup automatically creates the database tables — nothing
+   else to configure.
 
-### 3. Make the data persist (important)
-Without this step, Render wipes the app's local files on every restart/redeploy, so your logged
-entries, staff, and services would disappear. To fix it:
-
-1. On your service in Render, go to **Disks** → **Add Disk**.
-   - Name: `shop-data`
-   - Mount Path: `/var/data`
-   - Size: 1 GB is plenty.
-   - Note: persistent disks require a **paid instance type** (Starter or above) — the free tier
-     does not support them.
-2. Add another environment variable: `DB_PATH` → `/var/data/db.json`
-3. Redeploy. The server will automatically create `db.json` with the default staff/services the
-   first time it starts, and from then on all data is saved to the disk and survives restarts.
-
-If you're just testing and don't mind the data resetting occasionally, you can skip the disk —
-the app will still run fine on Render's free tier, it'll just lose entries whenever the service
-restarts or redeploys.
-
-### 4. Using it day to day
+### 3. Using it day to day
 Once deployed, share the Render URL with your staff (bookmark it on the shop tablet/phone) and
 use `https://your-app.onrender.com` yourself for the owner view. The free tier "spins down" after
 15 minutes of no traffic and takes ~30-50 seconds to wake back up on the next visit — worth
-knowing so it doesn't feel broken the first time someone opens it in the morning. A paid instance
-stays always-on.
+knowing so it doesn't feel broken the first time someone opens it in the morning. This no longer
+affects your data though — with Neon handling storage, everything survives spin-downs, restarts,
+and redeploys. A paid Render instance additionally stays always-on with no wake-up delay, but
+that's a performance choice now, not a data-safety one.
 
 ## How staff use it
 - **New Entry** tab: pick your name, pick the service (price fills in automatically, but you can
   edit it — useful for discounts or add-ons), pick how the customer paid, optionally add the
-  customer's name or a note, and hit **Log this service**. Takes a few seconds per customer.
+  customer's name or a note, and hit **Submit**. Takes a few seconds per customer.
 
 ## How the owner uses it
 - **Today's Book**: everything logged today, in order, with a running total. Any entry can be
-  removed if it was a mistake.
+  removed if it was a mistake. Click **Refresh** to pull the latest entries — the page doesn't
+  auto-update, so use this if you're watching it live or checking after a break.
 - **Reports**: pick a date range and see total collected, broken down by staff (great for working
   out commission/payout), by payment method (cash vs card vs UPI — useful for reconciling the
   till), and by service (which services actually sell). **Export CSV** downloads the raw rows for
   that range, ready for Excel or your accountant.
 - **Staff & Services**: add or remove staff members, and manage your price list. Changing a
   price here only affects new entries — past entries keep the price that was charged at the time.
+- **Settings**: set the recovery email used for "Forgot password" (staff login only — see above).
 
 ## Data & backup
-All data lives in `data/db.json`. Back this file up regularly (copy it to a USB drive, cloud
-folder, email it to yourself, etc.) — if the file is lost, the history is lost. It's plain
-JSON, so it's easy to read or migrate to a real database later if the shop grows.
+All data lives in your Neon Postgres database — it survives restarts and redeploys on its own, so
+day-to-day you don't need to think about it. For extra safety (accidental deletion, wanting an
+offline copy), Neon's dashboard has a SQL editor where you can run `SELECT * FROM entries;` etc.
+to export data, or use `pg_dump` from the command line if you're comfortable with that. Neon also
+keeps automatic backups on its own.
 
 ## Notes on extending this
 Some natural next steps if you want to grow this later:
@@ -176,5 +192,3 @@ Some natural next steps if you want to grow this later:
   small trusted team, but add PIN codes if that's a concern).
 - **Commission %** per staff member, so the report shows payout amount directly, not just totals.
 - **Multiple branches**, by tagging entries with a shop/branch ID.
-- **A real database** (Postgres/MySQL) if the shop has many staff and years of history — the
-  JSON-file approach is simple and works well up to a few hundred entries a day.

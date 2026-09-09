@@ -1,17 +1,26 @@
 // Shop Ledger — backend
-// A tiny Express API backed by a JSON file (data/db.json).
-// No native modules, no database server to install — just `npm install && npm start`.
+// Express API backed by Postgres (works great with Neon's free tier — see README).
 
 const express = require("express");
-const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { Pool } = require("pg");
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "db.json");
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// ---------- database connection ----------
+if (!process.env.DATABASE_URL) {
+  console.error("[Shop Ledger] DATABASE_URL is not set. Set it to your Postgres/Neon connection string.");
+}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes("localhost")
+    ? false
+    : { rejectUnauthorized: false },
+});
 
 // ---------- password hashing (no external deps — Node's built-in scrypt) ----------
 function hashPassword(password) {
@@ -27,58 +36,77 @@ function verifyPassword(password, stored) {
   const b = Buffer.from(check, "hex");
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-
-// Create the data file (and its folder) if it doesn't exist yet — matters on a fresh
-// deploy or a fresh Render Disk mount, which starts out empty.
-function ensureDB() {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) {
-    const seed = {
-      staff: [
-        { id: "s1", name: "Ravi", active: true },
-        { id: "s2", name: "Kumar", active: true },
-        { id: "s3", name: "Priya", active: true },
-      ],
-      services: [
-        { id: "sv1", name: "Haircut", price: 150 },
-        { id: "sv2", name: "Beard Trim", price: 80 },
-        { id: "sv3", name: "Hair Colour", price: 400 },
-        { id: "sv4", name: "Facial", price: 350 },
-        { id: "sv5", name: "Head Massage", price: 120 },
-      ],
-      entries: [],
-      settings: {
-        ownerEmail: process.env.OWNER_EMAIL || "",
-        ownerPasswordHash: hashPassword(process.env.OWNER_PASSWORD || "owner123"),
-        staffPasswordHash: hashPassword(process.env.STAFF_PASSWORD || "staff123"),
-      },
-    };
-    fs.writeFileSync(DB_PATH, JSON.stringify(seed, null, 2));
-  }
-}
-ensureDB();
-
-// ---------- tiny file-backed "database" ----------
-function readDB() {
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  const db = JSON.parse(raw);
-  // Back-fill settings for databases created before this feature existed.
-  if (!db.settings) {
-    db.settings = {
-      ownerEmail: process.env.OWNER_EMAIL || "",
-      ownerPasswordHash: hashPassword(process.env.OWNER_PASSWORD || "owner123"),
-      staffPasswordHash: hashPassword(process.env.STAFF_PASSWORD || "staff123"),
-    };
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-  }
-  return db;
-}
-function writeDB(db) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-}
 function id(prefix) {
   return prefix + "_" + crypto.randomBytes(4).toString("hex");
+}
+
+// ---------- schema setup + seed data (runs once at startup, safe to run every time) ----------
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS staff (
+      seq SERIAL,
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT true
+    );
+    CREATE TABLE IF NOT EXISTS services (
+      seq SERIAL,
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      price NUMERIC NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS entries (
+      id TEXT PRIMARY KEY,
+      staff_id TEXT NOT NULL,
+      staff_name TEXT NOT NULL,
+      service_id TEXT NOT NULL,
+      service_name TEXT NOT NULL,
+      price NUMERIC NOT NULL,
+      payment_method TEXT NOT NULL,
+      customer_name TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      owner_email TEXT DEFAULT '',
+      owner_password_hash TEXT,
+      staff_password_hash TEXT
+    );
+  `);
+
+  const { rows: staffRows } = await pool.query("SELECT COUNT(*) FROM staff");
+  if (Number(staffRows[0].count) === 0) {
+    await pool.query(
+      `INSERT INTO staff (id, name, active) VALUES
+       ('s1', 'Ravi', true), ('s2', 'Kumar', true), ('s3', 'Priya', true)`
+    );
+  }
+
+  const { rows: serviceRows } = await pool.query("SELECT COUNT(*) FROM services");
+  if (Number(serviceRows[0].count) === 0) {
+    await pool.query(
+      `INSERT INTO services (id, name, price) VALUES
+       ('sv1', 'Haircut', 150), ('sv2', 'Beard Trim', 80), ('sv3', 'Hair Colour', 400),
+       ('sv4', 'Facial', 350), ('sv5', 'Head Massage', 120)`
+    );
+  }
+
+  const { rows: settingsRows } = await pool.query("SELECT * FROM settings WHERE id = 1");
+  if (settingsRows.length === 0) {
+    await pool.query(
+      `INSERT INTO settings (id, owner_email, owner_password_hash, staff_password_hash)
+       VALUES (1, $1, $2, $3)`,
+      [
+        process.env.OWNER_EMAIL || "",
+        hashPassword(process.env.OWNER_PASSWORD || "owner123"),
+        hashPassword(process.env.STAFF_PASSWORD || "staff123"),
+      ]
+    );
+  }
+  console.log("[Shop Ledger] Database ready.");
 }
 
 // ---------- email sending (for password-reset codes) ----------
@@ -131,7 +159,6 @@ async function sendViaResend(to, code, label) {
 }
 
 async function sendResetCodeEmail(to, code, label) {
-  // Always log server-side too — useful during setup, and as a fallback if nothing else is configured.
   console.log(`[Shop Ledger] ${label} password reset code for ${to}: ${code} (valid 15 minutes)`);
   if (process.env.RESEND_API_KEY) {
     try {
@@ -179,10 +206,10 @@ function consumeResetCode(code, type) {
 // ---------- owner access ----------
 const ownerTokens = new Set();
 
-app.post("/api/owner/login", (req, res) => {
+app.post("/api/owner/login", async (req, res) => {
   const { password } = req.body;
-  const db = readDB();
-  if (!verifyPassword(password || "", db.settings.ownerPasswordHash)) {
+  const { rows } = await pool.query("SELECT owner_password_hash FROM settings WHERE id = 1");
+  if (!verifyPassword(password || "", rows[0]?.owner_password_hash)) {
     return res.status(401).json({ error: "Incorrect password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
@@ -206,16 +233,15 @@ function requireOwner(req, res, next) {
 
 // Note: the owner password has no email-based recovery by design — only the shared staff
 // password does (see /api/staff-access/forgot-password below). If the owner password is lost,
-// it can only be reset by changing OWNER_PASSWORD and clearing db.json's settings.ownerPasswordHash,
-// or by deleting the data file so it reseeds (which also resets everything else).
+// it can only be reset by running an UPDATE on the settings table directly in Neon's SQL editor.
 
 // ---------- staff access (one shared password for the whole team) ----------
 const staffTokens = new Set();
 
-app.post("/api/staff-access/login", (req, res) => {
+app.post("/api/staff-access/login", async (req, res) => {
   const { password } = req.body;
-  const db = readDB();
-  if (!verifyPassword(password || "", db.settings.staffPasswordHash)) {
+  const { rows } = await pool.query("SELECT staff_password_hash FROM settings WHERE id = 1");
+  if (!verifyPassword(password || "", rows[0]?.staff_password_hash)) {
     return res.status(401).json({ error: "Incorrect password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
@@ -239,10 +265,10 @@ function requireStaff(req, res, next) {
 
 app.post("/api/staff-access/forgot-password", async (req, res) => {
   const { email } = req.body;
-  const db = readDB();
-  const registered = db.settings.ownerEmail;
+  const { rows } = await pool.query("SELECT owner_email FROM settings WHERE id = 1");
+  const registered = rows[0]?.owner_email;
   if (!registered) {
-    return res.status(400).json({ error: "No recovery email is set up yet. Ask the owner to set one from Staff & Services." });
+    return res.status(400).json({ error: "No recovery email is set up yet. Ask the owner to set one from Settings." });
   }
   if (email && email.trim().toLowerCase() === registered.toLowerCase()) {
     const code = makeResetCode("staff");
@@ -251,7 +277,7 @@ app.post("/api/staff-access/forgot-password", async (req, res) => {
   res.json({ message: "If that email is on file, a reset code has been sent." });
 });
 
-app.post("/api/staff-access/reset-password", (req, res) => {
+app.post("/api/staff-access/reset-password", async (req, res) => {
   const { code, newPassword } = req.body;
   if (!newPassword || newPassword.length < 4) {
     return res.status(400).json({ error: "New password must be at least 4 characters." });
@@ -259,126 +285,153 @@ app.post("/api/staff-access/reset-password", (req, res) => {
   if (!consumeResetCode(code, "staff")) {
     return res.status(400).json({ error: "That code is invalid or has expired." });
   }
-  const db = readDB();
-  db.settings.staffPasswordHash = hashPassword(newPassword);
-  writeDB(db);
+  await pool.query("UPDATE settings SET staff_password_hash = $1 WHERE id = 1", [hashPassword(newPassword)]);
   staffTokens.clear();
   res.json({ message: "Staff password updated." });
 });
 
 // ---------- owner settings (recovery email) ----------
-app.get("/api/settings", requireOwner, (req, res) => {
-  const db = readDB();
-  res.json({ ownerEmail: db.settings.ownerEmail || "" });
+app.get("/api/settings", requireOwner, async (req, res) => {
+  const { rows } = await pool.query("SELECT owner_email FROM settings WHERE id = 1");
+  res.json({ ownerEmail: rows[0]?.owner_email || "" });
 });
 
-app.patch("/api/settings", requireOwner, (req, res) => {
+app.patch("/api/settings", requireOwner, async (req, res) => {
   const { ownerEmail } = req.body;
   if (typeof ownerEmail !== "string" || !/^\S+@\S+\.\S+$/.test(ownerEmail)) {
     return res.status(400).json({ error: "Enter a valid email address." });
   }
-  const db = readDB();
-  db.settings.ownerEmail = ownerEmail.trim();
-  writeDB(db);
-  res.json({ ownerEmail: db.settings.ownerEmail });
+  await pool.query("UPDATE settings SET owner_email = $1 WHERE id = 1", [ownerEmail.trim()]);
+  res.json({ ownerEmail: ownerEmail.trim() });
 });
 
 // ---------- staff ----------
-app.get("/api/staff", (req, res) => {
-  const db = readDB();
-  res.json(db.staff);
+app.get("/api/staff", async (req, res) => {
+  const { rows } = await pool.query("SELECT id, name, active FROM staff ORDER BY seq");
+  res.json(rows);
 });
 
-app.post("/api/staff", requireOwner, (req, res) => {
+app.post("/api/staff", requireOwner, async (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Name is required." });
-  const db = readDB();
-  const member = { id: id("s"), name: name.trim(), active: true };
-  db.staff.push(member);
-  writeDB(db);
-  res.status(201).json(member);
+  const newId = id("s");
+  const { rows } = await pool.query(
+    "INSERT INTO staff (id, name, active) VALUES ($1, $2, true) RETURNING id, name, active",
+    [newId, name.trim()]
+  );
+  res.status(201).json(rows[0]);
 });
 
-app.patch("/api/staff/:id", requireOwner, (req, res) => {
-  const db = readDB();
-  const member = db.staff.find((s) => s.id === req.params.id);
-  if (!member) return res.status(404).json({ error: "Staff member not found." });
-  if (typeof req.body.name === "string") member.name = req.body.name.trim();
-  if (typeof req.body.active === "boolean") member.active = req.body.active;
-  writeDB(db);
-  res.json(member);
+app.patch("/api/staff/:id", requireOwner, async (req, res) => {
+  const { rows: existingRows } = await pool.query("SELECT * FROM staff WHERE id = $1", [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: "Staff member not found." });
+  const name = typeof req.body.name === "string" ? req.body.name.trim() : existingRows[0].name;
+  const active = typeof req.body.active === "boolean" ? req.body.active : existingRows[0].active;
+  const { rows } = await pool.query(
+    "UPDATE staff SET name = $1, active = $2 WHERE id = $3 RETURNING id, name, active",
+    [name, active, req.params.id]
+  );
+  res.json(rows[0]);
 });
 
-app.delete("/api/staff/:id", requireOwner, (req, res) => {
-  const db = readDB();
-  const before = db.staff.length;
-  db.staff = db.staff.filter((s) => s.id !== req.params.id);
-  if (db.staff.length === before) return res.status(404).json({ error: "Staff member not found." });
-  writeDB(db);
+app.delete("/api/staff/:id", requireOwner, async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM staff WHERE id = $1", [req.params.id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Staff member not found." });
   res.status(204).end();
 });
 
 // ---------- services ----------
-app.get("/api/services", (req, res) => {
-  const db = readDB();
-  res.json(db.services);
+app.get("/api/services", async (req, res) => {
+  const { rows } = await pool.query("SELECT id, name, price FROM services ORDER BY seq");
+  res.json(rows.map((r) => ({ ...r, price: Number(r.price) })));
 });
 
-app.post("/api/services", requireOwner, (req, res) => {
+app.post("/api/services", requireOwner, async (req, res) => {
   const { name, price } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Service name is required." });
   if (typeof price !== "number" || price < 0) return res.status(400).json({ error: "Price must be a non-negative number." });
-  const db = readDB();
-  const service = { id: id("sv"), name: name.trim(), price };
-  db.services.push(service);
-  writeDB(db);
-  res.status(201).json(service);
+  const newId = id("sv");
+  const { rows } = await pool.query(
+    "INSERT INTO services (id, name, price) VALUES ($1, $2, $3) RETURNING id, name, price",
+    [newId, name.trim(), price]
+  );
+  res.status(201).json({ ...rows[0], price: Number(rows[0].price) });
 });
 
-app.patch("/api/services/:id", requireOwner, (req, res) => {
-  const db = readDB();
-  const service = db.services.find((s) => s.id === req.params.id);
-  if (!service) return res.status(404).json({ error: "Service not found." });
-  if (typeof req.body.name === "string") service.name = req.body.name.trim();
-  if (typeof req.body.price === "number") service.price = req.body.price;
-  writeDB(db);
-  res.json(service);
+app.patch("/api/services/:id", requireOwner, async (req, res) => {
+  const { rows: existingRows } = await pool.query("SELECT * FROM services WHERE id = $1", [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: "Service not found." });
+  const name = typeof req.body.name === "string" ? req.body.name.trim() : existingRows[0].name;
+  const price = typeof req.body.price === "number" ? req.body.price : Number(existingRows[0].price);
+  const { rows } = await pool.query(
+    "UPDATE services SET name = $1, price = $2 WHERE id = $3 RETURNING id, name, price",
+    [name, price, req.params.id]
+  );
+  res.json({ ...rows[0], price: Number(rows[0].price) });
 });
 
-app.delete("/api/services/:id", requireOwner, (req, res) => {
-  const db = readDB();
-  const before = db.services.length;
-  db.services = db.services.filter((s) => s.id !== req.params.id);
-  if (db.services.length === before) return res.status(404).json({ error: "Service not found." });
-  writeDB(db);
+app.delete("/api/services/:id", requireOwner, async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM services WHERE id = $1", [req.params.id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Service not found." });
   res.status(204).end();
 });
 
 // ---------- entries (the actual "notebook" rows) ----------
-app.get("/api/entries", requireOwner, (req, res) => {
-  const db = readDB();
-  let entries = db.entries;
+function rowToEntry(r) {
+  return {
+    id: r.id,
+    staffId: r.staff_id,
+    staffName: r.staff_name,
+    serviceId: r.service_id,
+    serviceName: r.service_name,
+    price: Number(r.price),
+    paymentMethod: r.payment_method,
+    customerName: r.customer_name || "",
+    note: r.note || "",
+    date: r.date,
+    time: r.time,
+    createdAt: r.created_at,
+  };
+}
+
+app.get("/api/entries", requireOwner, async (req, res) => {
   const { date, staffId, from, to } = req.query;
-  if (date) entries = entries.filter((e) => e.date === date);
-  if (staffId) entries = entries.filter((e) => e.staffId === staffId);
-  if (from) entries = entries.filter((e) => e.date >= from);
-  if (to) entries = entries.filter((e) => e.date <= to);
-  entries = [...entries].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  res.json(entries);
+  const conditions = [];
+  const params = [];
+  if (date) {
+    params.push(date);
+    conditions.push(`date = $${params.length}`);
+  }
+  if (staffId) {
+    params.push(staffId);
+    conditions.push(`staff_id = $${params.length}`);
+  }
+  if (from) {
+    params.push(from);
+    conditions.push(`date >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`date <= $${params.length}`);
+  }
+  const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
+  const { rows } = await pool.query(`SELECT * FROM entries ${where} ORDER BY created_at DESC`, params);
+  res.json(rows.map(rowToEntry));
 });
 
-app.post("/api/entries", requireStaff, (req, res) => {
+app.post("/api/entries", requireStaff, async (req, res) => {
   const { staffId, serviceId, price, paymentMethod, customerName, note } = req.body;
   if (!staffId || !serviceId) return res.status(400).json({ error: "Staff and service are required." });
   if (typeof price !== "number" || price < 0) return res.status(400).json({ error: "Price must be a non-negative number." });
   const validMethods = ["cash", "card", "upi", "other"];
   if (!validMethods.includes(paymentMethod)) return res.status(400).json({ error: "Invalid payment method." });
 
-  const db = readDB();
-  const staff = db.staff.find((s) => s.id === staffId);
-  const service = db.services.find((s) => s.id === serviceId);
-  if (!staff) return res.status(404).json({ error: "Staff member not found." });
-  if (!service) return res.status(404).json({ error: "Service not found." });
+  const { rows: staffRows } = await pool.query("SELECT * FROM staff WHERE id = $1", [staffId]);
+  const { rows: serviceRows } = await pool.query("SELECT * FROM services WHERE id = $1", [serviceId]);
+  if (staffRows.length === 0) return res.status(404).json({ error: "Staff member not found." });
+  if (serviceRows.length === 0) return res.status(404).json({ error: "Service not found." });
+  const staff = staffRows[0];
+  const service = serviceRows[0];
 
   const now = new Date();
   const entry = {
@@ -391,31 +444,44 @@ app.post("/api/entries", requireStaff, (req, res) => {
     paymentMethod,
     customerName: customerName ? customerName.trim() : "",
     note: note ? note.trim() : "",
-    date: now.toISOString().slice(0, 10), // YYYY-MM-DD, local server date
+    date: now.toISOString().slice(0, 10), // YYYY-MM-DD, UTC
     time: now.toTimeString().slice(0, 5), // HH:MM
     createdAt: now.toISOString(),
   };
-  db.entries.push(entry);
-  writeDB(db);
+  await pool.query(
+    `INSERT INTO entries (id, staff_id, staff_name, service_id, service_name, price, payment_method, customer_name, note, date, time, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      entry.id, entry.staffId, entry.staffName, entry.serviceId, entry.serviceName,
+      entry.price, entry.paymentMethod, entry.customerName, entry.note,
+      entry.date, entry.time, entry.createdAt,
+    ]
+  );
   res.status(201).json(entry);
 });
 
-app.delete("/api/entries/:id", requireOwner, (req, res) => {
-  const db = readDB();
-  const before = db.entries.length;
-  db.entries = db.entries.filter((e) => e.id !== req.params.id);
-  if (db.entries.length === before) return res.status(404).json({ error: "Entry not found." });
-  writeDB(db);
+app.delete("/api/entries/:id", requireOwner, async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM entries WHERE id = $1", [req.params.id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Entry not found." });
   res.status(204).end();
 });
 
 // ---------- summary / reports ----------
-app.get("/api/summary", requireOwner, (req, res) => {
-  const db = readDB();
+app.get("/api/summary", requireOwner, async (req, res) => {
   const { from, to } = req.query;
-  let entries = db.entries;
-  if (from) entries = entries.filter((e) => e.date >= from);
-  if (to) entries = entries.filter((e) => e.date <= to);
+  const conditions = [];
+  const params = [];
+  if (from) {
+    params.push(from);
+    conditions.push(`date >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`date <= $${params.length}`);
+  }
+  const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
+  const { rows } = await pool.query(`SELECT * FROM entries ${where}`, params);
+  const entries = rows.map(rowToEntry);
 
   const total = entries.reduce((sum, e) => sum + e.price, 0);
   const byStaff = {};
@@ -444,6 +510,13 @@ app.get("/api/summary", requireOwner, (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Shop Ledger running at http://localhost:${PORT}`);
-});
+initDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Shop Ledger running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("[Shop Ledger] Failed to initialize database:", err.message);
+    process.exit(1);
+  });
